@@ -1,0 +1,513 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// User & Authentication
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  name           String
+  role           UserRole  @default(STAFF)
+  
+  // Profile
+  phone          String?
+  avatar         String?
+  specialization String?
+  licenseNumber  String?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  DOCTOR
+  NURSE
+  RECEPTIONIST
+  STAFF
+}
+
+// Patient Management
+model Patient {
+  id            String    @id @default(cuid())
+  
+  // Personal Info
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String
+  dateOfBirth   DateTime
+  gender        Gender
+  bloodType     BloodType?
+  
+  // Address
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+  
+  // Medical
+  allergies     String?
+  conditions    String?
+  
+  // Relations
+  appointments      Appointment[]
+  prescriptions     Prescription[]
+  assignedDoctors   PatientDoctor[]
+  reviews           DoctorReview[]
+  waitlistEntries   AppointmentWaitlist[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodType {
+  A_POSITIVE
+  A_NEGATIVE
+  B_POSITIVE
+  B_NEGATIVE
+  AB_POSITIVE
+  AB_NEGATIVE
+  O_POSITIVE
+  O_NEGATIVE
+}
+
+// Enhanced Appointment System
+model Appointment {
+  id               String            @id @default(cuid())
+  patientId        String
+  patient          Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId         String
+  doctor           Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Date & Time
+  appointmentDate  DateTime
+  appointmentTime  String            // Format: "09:00"
+  duration         Int               @default(30) // minutes
+  
+  // Status & Type (Enhanced)
+  status           AppointmentStatus @default(SCHEDULED)
+  type             AppointmentType   @default(CONSULTATION)
+  priority         AppointmentPriority @default(NORMAL)
+  
+  // Details
+  reason           String
+  symptoms         String?           @db.Text
+  notes            String?           @db.Text
+  diagnosis        String?           @db.Text
+  
+  // Recurring appointments
+  isRecurring      Boolean           @default(false)
+  recurringPattern RecurringPattern?
+  recurringEndDate DateTime?
+  parentAppointmentId String?
+  
+  // Reminders
+  reminderSent     Boolean           @default(false)
+  reminderSentAt   DateTime?
+  
+  // Video consultation
+  meetingLink      String?
+  meetingId        String?
+  
+  // Cancellation
+  cancelledAt      DateTime?
+  cancelledBy      String?
+  cancellationReason String?
+  
+  // Check-in/Check-out
+  checkedInAt      DateTime?
+  checkedOutAt     DateTime?
+  
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([appointmentDate])
+  @@index([status])
+}
+
+// Waitlist Management
+model AppointmentWaitlist {
+  id              String   @id @default(cuid())
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId        String
+  doctor          Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  preferredDate   DateTime?
+  preferredTime   String?
+  reason          String?
+  priority        AppointmentPriority @default(NORMAL)
+  
+  isNotified      Boolean  @default(false)
+  notifiedAt      DateTime?
+  
+  status          WaitlistStatus @default(WAITING)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([status])
+}
+
+// Appointment Templates
+model AppointmentTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  duration        Int      // minutes
+  appointmentType AppointmentType
+  color           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Enhanced Appointment Enums
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum AppointmentType {
+  CONSULTATION
+  FOLLOW_UP
+  EMERGENCY
+  ROUTINE_CHECKUP
+  IN_PERSON
+  VIDEO_CALL
+  PHONE_CALL
+}
+
+enum AppointmentPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum RecurringPattern {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+enum WaitlistStatus {
+  WAITING
+  NOTIFIED
+  SCHEDULED
+  CANCELLED
+  EXPIRED
+}
+
+// AI-Powered Prescriptions
+model Prescription {
+  id               String                 @id @default(cuid())
+  
+  patientId        String
+  patient          Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  doctorId         String
+  doctor           Doctor                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  appointmentId    String?                // Link to appointment
+  
+  diagnosis        String
+  symptoms         String?
+  medications      PrescriptionMedicine[]
+  instructions     String
+  
+  aiSuggested      Boolean                @default(false)
+  aiAnalysis       String?
+
+   // New fields
+  status           PrescriptionStatus     @default(ACTIVE)
+  validUntil       DateTime?
+  refills          PrescriptionRefill[]
+  
+  prescriptionDate DateTime               @default(now())
+  
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([appointmentId])
+}
+
+model PrescriptionMedicine {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  
+  medicineName   String
+  dosage         String
+  frequency      String
+  duration       String
+  instructions   String?
+  
+  createdAt      DateTime     @default(now())
+}
+
+// Add to existing schema
+
+model PrescriptionTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  diagnosis       String
+  medications     Json     // Array of {medicineName, dosage, frequency, duration}
+  instructions    String
+  doctorId        String?
+  doctor          Doctor?  @relation(fields: [doctorId], references: [id], onDelete: SetNull)
+  
+  isPublic        Boolean  @default(false)
+  useCount        Int      @default(0)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([doctorId])
+}
+
+model MedicationInventory {
+  id              String   @id @default(cuid())
+  medicineName    String   @unique
+  genericName     String?
+  category        MedicationCategory
+  manufacturer    String?
+  stockQuantity   Int      @default(0)
+  unitPrice       Float?
+  expiryDate      DateTime?
+  minStockLevel   Int      @default(10)
+  description     String?  @db.Text
+  sideEffects     String?  @db.Text
+  interactions    String?  @db.Text
+  
+  isActive        Boolean  @default(true)
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model PrescriptionRefill {
+  id              String       @id @default(cuid())
+  prescriptionId  String
+  prescription    Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  
+  requestedAt     DateTime     @default(now())
+  status          RefillStatus @default(PENDING)
+  approvedBy      String?
+  approvedAt      DateTime?
+  notes           String?
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  
+  @@index([prescriptionId])
+}
+
+// Enums
+enum MedicationCategory {
+  ANTIBIOTIC
+  PAINKILLER
+  ANTIVIRAL
+  ANTIFUNGAL
+  ANTIHISTAMINE
+  CARDIOVASCULAR
+  DIABETES
+  GASTROINTESTINAL
+  RESPIRATORY
+  NEUROLOGICAL
+  VITAMIN
+  SUPPLEMENT
+  OTHER
+}
+
+enum RefillStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISPENSED
+}
+
+enum PrescriptionStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+// Doctor Management
+model Doctor {
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  phone           String
+  specialization  String
+  licenseNumber   String   @unique
+  qualification   String
+  experience      Int      // Years of experience
+  consultationFee Float
+  prescriptionTemplates PrescriptionTemplate[]
+  
+  // Personal Info
+  dateOfBirth     DateTime?
+  gender          Gender?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  
+  // Professional Info
+  department      String?
+  languages       String?  // Comma-separated
+  bio             String?  @db.Text
+  
+  // Availability
+  isAvailable     Boolean  @default(true)
+  
+  // Staff Role
+  role            StaffRole @default(DOCTOR)
+  status          StaffStatus @default(ACTIVE)
+  
+  // Relations
+  appointments    Appointment[]
+  prescriptions   Prescription[]
+  schedules       DoctorSchedule[]
+  shifts          Shift[]
+  assignedPatients PatientDoctor[]
+  reviews         DoctorReview[]
+  waitlistEntries  AppointmentWaitlist[]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DoctorSchedule {
+  id          String    @id @default(cuid())
+  doctorId    String
+  doctor      Doctor    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek   DayOfWeek
+  startTime   String    // Format: "09:00"
+  endTime     String    // Format: "17:00"
+  isAvailable Boolean   @default(true)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([doctorId, dayOfWeek])
+}
+
+model Shift {
+  id          String      @id @default(cuid())
+  doctorId    String
+  doctor      Doctor      @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  date        DateTime
+  startTime   String      // Format: "09:00"
+  endTime     String      // Format: "17:00"
+  shiftType   ShiftType
+  status      ShiftStatus @default(SCHEDULED)
+  notes       String?
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model PatientDoctor {
+  id          String   @id @default(cuid())
+  patientId   String
+  doctorId    String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  isPrimary   Boolean  @default(false)
+  assignedAt  DateTime @default(now())
+  notes       String?
+  
+  @@unique([patientId, doctorId])
+}
+
+model DoctorReview {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  rating      Int      // 1-5
+  comment     String?  @db.Text
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Enums
+enum StaffRole {
+  DOCTOR
+  NURSE
+  ADMIN
+  RECEPTIONIST
+  PHARMACIST
+  TECHNICIAN
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum ShiftType {
+  MORNING
+  AFTERNOON
+  EVENING
+  NIGHT
+  FULL_DAY
+}
+
+enum ShiftStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
